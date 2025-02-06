@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 # Título de la aplicación
 st.title("Buscador de Contactos por Profesión/Industria y País")
 st.write("""
-Esta aplicación utiliza la API de Serper.dev para buscar en Google profesiones o industrias, junto con países, 
+Esta aplicación utiliza la API de Serper.dev para buscar en Google profesiones o industrias, junto con un país, 
 y obtener información de contacto (emails) de las páginas web encontradas. 
 Luego permite exportar los resultados a CSV o Excel.
 """)
@@ -24,6 +24,9 @@ st.write("""
 profesion = st.text_input("Ingrese la profesión o industria (ej: 'Abogados', 'Empresas de marketing'):")
 pais = st.text_input("Ingrese el país (ej: 'España', 'México', 'Argentina'):")
 api_key = st.text_input("Introduzca su API Key de Serper (Obligatorio)", type="password")
+
+# Máximo de contactos
+MAX_CONTACTOS = 500
 
 # Expresión regular mejorada para emails
 email_pattern = r"[a-zA-Z0-9_.+\-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
@@ -106,7 +109,7 @@ if st.button("Buscar"):
                 with st.spinner("Realizando búsqueda, por favor espere..."):
                     # Etapa 1: Obtener todos los resultados necesarios
                     start = 0
-                    while True:
+                    while len(contactos) < MAX_CONTACTOS:
                         try:
                             response = requests.post(url, headers=headers, json={
                                 "q": query,
@@ -146,7 +149,7 @@ if st.button("Buscar"):
                         title = item.get("title", "")
                         emails_snippet = extraer_emails_texto(snippet)
                         for email in emails_snippet:
-                            if email not in emails_encontrados_set:
+                            if email not in emails_encontrados_set and len(contactos) < MAX_CONTACTOS:
                                 emails_encontrados_set.add(email)
                                 contactos.append({
                                     "nombre": title,
@@ -156,7 +159,7 @@ if st.button("Buscar"):
                         progress_bar.progress(min(progress, 1.0))
 
                     # Etapa 3: Si no alcanzamos el objetivo, extraer del HTML
-                    if len(contactos) > 0:
+                    if len(contactos) < MAX_CONTACTOS:
                         with ThreadPoolExecutor(max_workers=10) as executor:
                             future_to_url = {executor.submit(extraer_emails_html, item.get("link", "")): item for item in paginas_resultados if item.get("link", "")}
                             for future in as_completed(future_to_url):
@@ -165,7 +168,7 @@ if st.button("Buscar"):
                                 try:
                                     emails_html = future.result()
                                     for email in emails_html:
-                                        if email not in emails_encontrados_set:
+                                        if email not in emails_encontrados_set and len(contactos) < MAX_CONTACTOS:
                                             emails_encontrados_set.add(email)
                                             contactos.append({
                                                 "nombre": title,
