@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 # Título de la aplicación
 st.title("Buscador de Contactos por Profesión/Industria y País")
 st.write("""
-Esta aplicación utiliza la API de Serper.dev para buscar en Google profesiones o industrias, junto con un país, 
+Esta aplicación utiliza la API de Serper.dev para buscar en Google profesiones o industrias, junto con países, 
 y obtener información de contacto (emails) de las páginas web encontradas. 
 Luego permite exportar los resultados a CSV o Excel.
 """)
@@ -25,8 +25,8 @@ profesion = st.text_input("Ingrese la profesión o industria (ej: 'Abogados', 'E
 pais = st.text_input("Ingrese el país (ej: 'España', 'México', 'Argentina'):")
 api_key = st.text_input("Introduzca su API Key de Serper (Obligatorio)", type="password")
 
-# Máximo de contactos
-MAX_CONTACTOS = 500
+# Límite máximo de contactos
+MAX_CONTACTOS = 100
 
 # Expresión regular mejorada para emails
 email_pattern = r"[a-zA-Z0-9_.+\-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
@@ -158,6 +158,9 @@ if st.button("Buscar"):
                         progress = (i + 1) / len(paginas_resultados)
                         progress_bar.progress(min(progress, 1.0))
 
+                        if len(contactos) >= MAX_CONTACTOS:
+                            break
+
                     # Etapa 3: Si no alcanzamos el objetivo, extraer del HTML
                     if len(contactos) < MAX_CONTACTOS:
                         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -176,6 +179,9 @@ if st.button("Buscar"):
                                             })
                                 except Exception:
                                     continue
+
+                                if len(contactos) >= MAX_CONTACTOS:
+                                    break
 
                 st.success(f"Se han encontrado {len(contactos)} contactos.")
                 if resultados_obtenidos and len(contactos) == 0:
