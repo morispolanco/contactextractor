@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 st.title("Buscador de Contactos por Profesión/Industria y País")
 st.write("""
 Esta aplicación utiliza la API de Serper.dev para buscar en Google profesiones o industrias, junto con países, 
-y obtener información de contacto (emails, empresa, puesto y teléfono) de las páginas web encontradas. 
+y obtener información de contacto (emails) de las páginas web encontradas. 
 Luego permite exportar los resultados a CSV o Excel.
 """)
 st.write("""
@@ -24,11 +24,9 @@ st.write("""
 profesion = st.text_input("Ingrese la profesión o industria (ej: 'Abogados', 'Empresas de marketing'):")
 pais = st.text_input("Ingrese el país (ej: 'España', 'México', 'Argentina'):")
 api_key = st.text_input("Introduzca su API Key de Serper (Obligatorio)", type="password")
-max_contactos = st.number_input("Cantidad de contactos a extraer (mínimo 100, máximo 1000):", min_value=100, max_value=1000, value=100, step=100)
 
-# Expresiones regulares
+# Expresión regular mejorada para emails
 email_pattern = r"[a-zA-Z0-9_.+\-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
-telefono_pattern = r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}"
 
 # Función para validar emails
 def es_email_valido(email):
@@ -59,6 +57,7 @@ def extraer_emails_html(url_sitio):
         resp = requests.get(url_sitio, timeout=5)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, 'html.parser')
+            # Extraer texto visible
             texts = soup.stripped_strings
             for text in texts:
                 found = re.findall(email_pattern, text)
@@ -66,19 +65,6 @@ def extraer_emails_html(url_sitio):
     except requests.exceptions.RequestException:
         pass
     return filtrar_emails(emails_encontrados)
-
-# Extraer información adicional (empresa, puesto, teléfono)
-def extraer_informacion_adicional(texto):
-    empresa = re.search(r"(?i)(?:empresa|compañía|corporación)\s*:\s*([^\n]+)", texto)
-    empresa = empresa.group(1).strip() if empresa else "Desconocida"
-
-    puesto = re.search(r"(?i)(?:puesto|cargo|posición)\s*:\s*([^\n]+)", texto)
-    puesto = puesto.group(1).strip() if puesto else "Desconocido"
-
-    telefonos = re.findall(telefono_pattern, texto)
-    telefono = telefonos[0] if telefonos else "No disponible"
-
-    return empresa, puesto, telefono
 
 # Verificar API Key
 def verificar_api_key(api_key):
@@ -119,7 +105,8 @@ if st.button("Buscar"):
 
                 with st.spinner("Realizando búsqueda, por favor espere..."):
                     # Etapa 1: Obtener todos los resultados necesarios
-                    for start in range(0, max_contactos, resultados_por_pagina):
+                    start = 0
+                    while True:
                         try:
                             response = requests.post(url, headers=headers, json={
                                 "q": query,
@@ -143,40 +130,33 @@ if st.button("Buscar"):
                         if "organic" not in data or len(data["organic"]) == 0:
                             if not resultados_obtenidos:
                                 st.info("No se encontraron resultados para la búsqueda realizada.")
-                                break
+                            break
                         resultados_obtenidos = True
                         paginas_resultados.extend(data["organic"])
+                        start += resultados_por_pagina
 
-                        # Si ya tenemos suficientes resultados potenciales
-                        if len(paginas_resultados) * 10 >= max_contactos:
+                        # Si no hay más resultados, salir del bucle
+                        if len(data["organic"]) < resultados_por_pagina:
                             break
 
                     # Etapa 2: Extraer emails primero de los snippets
                     progress_bar = st.progress(0)
-                    for item in paginas_resultados:
+                    for i, item in enumerate(paginas_resultados):
                         snippet = item.get("snippet", "")
                         title = item.get("title", "")
                         emails_snippet = extraer_emails_texto(snippet)
-
                         for email in emails_snippet:
                             if email not in emails_encontrados_set:
-                                empresa, puesto, telefono = extraer_informacion_adicional(snippet)
                                 emails_encontrados_set.add(email)
                                 contactos.append({
                                     "nombre": title,
-                                    "empresa": empresa,
-                                    "puesto": puesto,
-                                    "email": email,
-                                    "telefono": telefono
+                                    "email": email
                                 })
-                        progress = len(contactos) / max_contactos
+                        progress = (i + 1) / len(paginas_resultados)
                         progress_bar.progress(min(progress, 1.0))
 
-                        if len(contactos) >= max_contactos:
-                            break
-
                     # Etapa 3: Si no alcanzamos el objetivo, extraer del HTML
-                    if len(contactos) < max_contactos:
+                    if len(contactos) > 0:
                         with ThreadPoolExecutor(max_workers=10) as executor:
                             future_to_url = {executor.submit(extraer_emails_html, item.get("link", "")): item for item in paginas_resultados if item.get("link", "")}
                             for future in as_completed(future_to_url):
@@ -186,31 +166,20 @@ if st.button("Buscar"):
                                     emails_html = future.result()
                                     for email in emails_html:
                                         if email not in emails_encontrados_set:
-                                            empresa, puesto, telefono = extraer_informacion_adicional(item.get("snippet", ""))
                                             emails_encontrados_set.add(email)
                                             contactos.append({
                                                 "nombre": title,
-                                                "empresa": empresa,
-                                                "puesto": puesto,
-                                                "email": email,
-                                                "telefono": telefono
+                                                "email": email
                                             })
-                                    progress = len(contactos) / max_contactos
-                                    progress_bar.progress(min(progress, 1.0))
-                                    if len(contactos) >= max_contactos:
-                                        break
                                 except Exception:
                                     continue
-                                if len(contactos) >= max_contactos:
-                                    break
 
                 st.success(f"Se han encontrado {len(contactos)} contactos.")
-
                 if resultados_obtenidos and len(contactos) == 0:
-                    st.info("No se encontraron correos electrónicos válidos en los resultados. Intente con otras palabras clave o aumente el número de resultados.")
+                    st.info("No se encontraron correos electrónicos válidos en los resultados. Intente con otras palabras clave.")
 
                 if len(contactos) > 0:
-                    df = pd.DataFrame(contactos, columns=["nombre", "empresa", "puesto", "email", "telefono"])
+                    df = pd.DataFrame(contactos, columns=["nombre", "email"])
 
                     # Exportar a CSV (UTF-8)
                     csv_data = df.to_csv(index=False).encode("utf-8")
