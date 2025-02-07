@@ -7,17 +7,17 @@ from bs4 import BeautifulSoup
 st.title("Buscador de Contactos Profesionales por País")
 
 st.write("""
-Esta aplicación utiliza la API de LangSearch para buscar información de contacto (correos electrónicos) 
+Esta aplicación utiliza la API de Serper para buscar información de contacto (correos electrónicos) 
 de profesionales en un país específico.
 
-Para utilizarla, necesitas configurar tu clave API en los secretos de Streamlit.
+Para utilizarla, introduce tu clave API de Serper.
 """)
 
-# Obtener la API Key desde los secretos de Streamlit
-api_key = st.secrets["LANGSEARCH_API_KEY"]
+# El usuario introduce su API Key
+api_key = st.text_input("Introduce tu API Key de Serper", type="password")
 profesion = st.text_input("Ingresa la profesión o industria", "Ingenieros de software")
 pais = st.text_input("Ingresa el país", "España")
-count = st.slider("Número de resultados", 1, 50, 10)
+count = st.slider("Número de resultados", 100, 1000, 100, step=100)
 
 email_pattern = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
 
@@ -36,22 +36,19 @@ def extraer_emails_desde_url(url):
 
 if st.button("Buscar"):
     if not api_key:
-        st.error("La API Key no está configurada en los secretos de Streamlit.")
+        st.error("Por favor, introduce tu API Key de Serper.")
     elif not profesion or not pais:
         st.error("Por favor, introduce una profesión y un país.")
     else:
         with st.spinner("Buscando..."):
-            url = "https://api.langsearch.com/v1/web-search"
+            url = "https://google.serper.dev/search"
             headers = {
-                "Authorization": f"Bearer {api_key}",
+                "X-API-KEY": api_key,
                 "Content-Type": "application/json"
             }
             query = f"{profesion} en {pais} contacto email"
             data = {
-                "query": query,
-                "freshness": "noLimit",
-                "summary": True,
-                "count": count
+                "q": query
             }
             
             response = requests.post(url, headers=headers, json=data)
@@ -60,15 +57,15 @@ if st.button("Buscar"):
                 results = response.json()
                 contactos = []
                 
-                for item in results.get("results", []):
-                    emails = extraer_emails(item.get("summary", ""))
+                for item in results.get("organic", []):
+                    emails = extraer_emails(item.get("snippet", ""))
                     if not emails:
-                        emails = extraer_emails_desde_url(item.get("url", ""))
+                        emails = extraer_emails_desde_url(item.get("link", ""))
                     for email in emails:
                         contactos.append({
                             "Nombre": item.get("title", "Desconocido"),
                             "Email": email,
-                            "Fuente": item.get("url", "#")
+                            "Fuente": item.get("link", "#")
                         })
                 
                 if contactos:
