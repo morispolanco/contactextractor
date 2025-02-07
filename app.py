@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 import re
 from bs4 import BeautifulSoup
+from io import BytesIO
 
 st.title("Buscador de Contactos Profesionales por País")
 
@@ -72,6 +73,15 @@ if st.button("Buscar"):
                     df = pd.DataFrame(contactos)
                     st.success("Búsqueda completada con éxito!")
                     st.dataframe(df)
+                    
+                    # Exportar a CSV
+                    csv_data = df.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        label="Descargar CSV",
+                        data=csv_data,
+                        file_name="contactos.csv",
+                        mime="text/csv"
+                    )
                 else:
                     st.warning("No se encontraron correos electrónicos en los resultados.")
             else:
