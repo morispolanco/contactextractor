@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import re
+from bs4 import BeautifulSoup
 
 st.title("Buscador de Contactos Profesionales por País")
 
@@ -22,6 +23,16 @@ email_pattern = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
 
 def extraer_emails(texto):
     return list(set(re.findall(email_pattern, texto)))
+
+def extraer_emails_desde_url(url):
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            return extraer_emails(soup.get_text())
+    except requests.exceptions.RequestException:
+        return []
+    return []
 
 if st.button("Buscar"):
     if not api_key:
@@ -51,6 +62,8 @@ if st.button("Buscar"):
                 
                 for item in results.get("results", []):
                     emails = extraer_emails(item.get("summary", ""))
+                    if not emails:
+                        emails = extraer_emails_desde_url(item.get("url", ""))
                     for email in emails:
                         contactos.append({
                             "Nombre": item.get("title", "Desconocido"),
